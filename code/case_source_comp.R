@@ -2,7 +2,7 @@ library(dplyr)
 library(tidyr)
 library(lubridate)
 library(ggplot2)
-# library(ggrepel)
+source("code/functions.R")
 
 ll <- read_ll()
 fdoh <- data.table::fread("data/Test, Hospitalization, Death per daily report - Main.csv")

@@ -1,14 +1,13 @@
 rm(list=ls())
-library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(stringr)
 library(lubridate)
+library(ggplot2)
 library(gridExtra)
+source("code/functions.R")
 
-ll <- data.table::fread("../fl-covid19/data/linelist_latest.csv")
-ll$Case1 <- as.POSIXct(ll$Case1/1000, origin="1970-01-01", tz="UTC") %>%
-  format(format = "%Y-%m-%d %H:%M:%S")
-ll$EventDate <- ymd_hms(ll$EventDate) %>% as.Date()
-ll$ChartDate <- ymd_hms(ll$ChartDate) %>% as.Date()
-ll$Age <- as.numeric(ll$Age)
+ll <- read_ll()
 
 age_lo <- c(0, 40, 65, 0)
 age_hi <- c(39, 64, 200, 200)
@@ -31,70 +30,9 @@ ts_uncertainty <- function (v, d = 5) {
 }
 ####
 
-chd_all <- data.frame()
-
-for (i in 1:4) {
-  chd <- ll %>%
-    filter(ChartDate >= ymd("2020-03-01"), ChartDate <= ymd("2021-04-03")) %>%
-    filter(Age >= age_lo[i], Age <= age_hi[i]) %>% 
-    group_by(ChartDate) %>%
-    summarise(n = n(), 
-              hosp_n = sum(Hospitalized == "YES", na.rm = T),
-              death_n = sum(Died == "Yes", na.rm = T)) %>%
-    mutate(Week = epiweek(ChartDate),
-           Week = ifelse(Week != 53 & year(ChartDate) != 2020, 53+Week, Week)) %>%
-    ungroup
-  
-  outb1_summ <- chd %>%
-    filter(Week %in% c(11:20)) %>%
-    summarise(
-      CI = list(ts_uncertainty(n)),
-      n = mean(n)*7,
-      nlo = CI[[1]][1],
-      nhi = CI[[1]][2],
-      CI = list(ts_uncertainty(hosp_n)),
-      hosp_n = mean(hosp_n)*7,
-      hosp_nlo = CI[[1]][1],
-      hosp_nhi = CI[[1]][2],
-      CI = list(ts_uncertainty(death_n)),
-      death_n = mean(death_n)*7,
-      death_nlo = CI[[1]][1],
-      death_nhi = CI[[1]][2])
-  
-  chd_weekly <- chd %>%
-    group_by(Week) %>%
-    summarise(week_end_date = max(ChartDate), 
-              n = sum(n), 
-              hosp_n = sum(hosp_n),
-              death_n = sum(death_n)) %>%
-    mutate(cr = n / outb1_summ$n,
-           crlo = n / outb1_summ$nhi,
-           crhi = n / outb1_summ$nlo,
-           hr = hosp_n / outb1_summ$hosp_n,
-           hrlo = hosp_n / outb1_summ$hosp_nhi,
-           hrhi = hosp_n / outb1_summ$hosp_nlo,
-           dr = death_n / outb1_summ$death_n,
-           drlo = death_n / outb1_summ$death_nhi,
-           drhi = death_n / outb1_summ$death_nlo,
-           cr2hr = cr / hr,
-           cr2dr = cr / dr)
-  
-  chd_long <- chd_weekly %>%
-    select(Week, week_end_date, cr:drhi) %>%
-    pivot_longer(-c(Week, week_end_date),
-                 names_to = "type", values_to = "ratio")
-  # chd_long$type <- factor(chd_long$type,
-  #                         levels = c("cr", "hr", "dr"))
-  chd_long$age_grp <- age_grp[i]
-  
-  chd_all <- bind_rows(chd_all, chd_long)
-}
-
-chd_all$age_grp <- factor(chd_all$age_grp,
-                          levels = c("All ages", "0 to 39", "40 to 64", "Above 65"))
-
+chd_all <- make_chd_all(ll)
 chd_all1 <- chd_all %>%
-  filter(type %in% c("cr", "hr", "dr"))
+  filter(type %in% c("cr", "dr"))
 
 chd_all2 <- chd_all %>%
   filter(str_detect(type, "lo|hi")) %>%
@@ -106,24 +44,28 @@ chd_all2 <- chd_all %>%
 chd_all <- chd_all1 %>%
   left_join(chd_all2)
 chd_all$type <- factor(chd_all$type,
-                       levels = c("cr", "hr", "dr"))
+                       levels = c("cr", "dr"))
 
+dates <- rep(ymd("2020-03-01"), 9)
+month(dates) <- c(seq(3, 11, by=2), seq(1, 7, by=2))
+year(dates) <- c(rep(2020, 5), rep(2021, 4))
+dates_label <- c("Mar\n2020", month.abb[seq(5, 11, by=2)], 
+                 "Jan\n2021", month.abb[seq(3, 7, by=2)])
 
 p1l <- chd_all %>%
   filter(age_grp == "All ages") %>%
-  filter(!type %in% c("dwhr", "dwohr")) %>%
   ggplot() +
   geom_line(aes(x=week_end_date, y=ratio, colour=type), size=0.8) +
   geom_ribbon(aes(x=week_end_date, ymin=lo, ymax=hi, fill=type), alpha=0.4) +
   geom_hline(yintercept = 1, lty = 2) +
   scale_y_continuous(breaks = 0:6 * 4) +
   scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-  labs(x = "", y = "Ratio", title = "(a) Overall case, hospitalization and death ratios") +
-  scale_colour_manual(name = NA, values = c("black", "blue", "red"),
-                      labels = c("Case", "Hospitalized", "Death")) +
-  scale_fill_manual(name = NA, values = c("black", "blue", "red"),
-                    labels = c("Case", "Hospitalized", "Death")) +
-  ggpubr::theme_pubclean(base_size = 9) +
+  labs(x = "", y = "Ratio", title = "(a) Overall normalized weekly cases and deaths") +
+  scale_colour_manual(name = NA, values = c("black", "red"),
+                      labels = c("Case", "Death")) +
+  scale_fill_manual(name = NA, values = c("black", "red"),
+                    labels = c("Case", "Death")) +
+  ggpubr::theme_pubclean(base_size = 11) +
   theme(legend.title = element_blank(),
         panel.grid.major.x = element_line(linetype = "dotted", color = "grey"),
         plot.title = element_text(size = rel(1.0)))
@@ -132,32 +74,33 @@ l1 <- ggpubr::get_legend(p1l)
 
 p1 <- chd_all %>%
   filter(age_grp == "All ages") %>%
-  filter(!type %in% c("dwhr", "dwohr")) %>%
   ggplot() +
   geom_line(aes(x=week_end_date, y=ratio, colour=type), size=0.8, show.legend = F) +
   geom_ribbon(aes(x=week_end_date, ymin=lo, ymax=hi, fill=type), alpha=0.4, show.legend = F) +
   geom_segment(aes(x=ymd("2020-03-08"), xend=ymd("2020-05-09"), y=3, yend=3), colour="gray40",
                arrow = arrow(angle = 20, unit(0.1, "inches"), ends="both", type="closed")) +
   geom_hline(yintercept = 1, lty = 2) +
-  annotate("text", x=ymd("2020-04-11"), y=4, label = "First wave", size=2.5, colour="gray40") +
-  annotate("text", x=ymd("2020-05-01"), y=12, 
-           label = "Ratio = Weekly \nnumber over \nmean weekly\nnumber during\nfirst wave", 
-           size=2.5, colour="gray40") +
+  annotate("text", x=ymd("2020-04-11"), y=4, label = "First wave", size=3, colour="gray40") +
+  annotate("text", x=ymd("2020-07-01"), y=23, 
+           label = "Numbers are normalized \nby mean weekly number \nduring the first wave", 
+           size=3, colour="gray40") +
   scale_y_continuous(breaks = 0:6 * 4) +
-  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-  labs(x = "", y = "Ratio", title = "(a) Overall case, hospitalization and death ratios") +
-  scale_colour_manual(name = NA, values = c("black", "blue", "red"),
-                      labels = c("Case", "Hospitalized", "Death")) +
-  scale_fill_manual(name = NA, values = c("black", "blue", "red"),
-                    labels = c("Case", "Hospitalized", "Death")) +
-  ggpubr::theme_pubclean(base_size = 9) +
+  scale_x_date(breaks = dates, labels = dates_label) +
+  labs(x = "", y = "", title = "(a) Normalized weekly cases and deaths") +
+  scale_colour_manual(name = NA, values = c("black", "red"),
+                      labels = c("Case", "Death")) +
+  scale_fill_manual(name = NA, values = c("black", "red"),
+                    labels = c("Case", "Death")) +
+  ggpubr::theme_pubclean(base_size = 11) +
   theme(legend.title = element_blank(),
-        panel.grid.major.x = element_line(linetype = "dotted", color = "grey"),
-        plot.title = element_text(size = rel(1.0)))
-
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        # panel.grid.major.x = element_line(linetype = "dotted", color = "grey"),
+        plot.title = element_text(size = rel(0.95)))
 
 chd_age <- ll %>%
-  filter(ChartDate >= ymd("2020-03-01"), ChartDate <= ymd("2021-04-03")) %>%
+  filter(ChartDate >= ymd("2020-03-01"), ChartDate <= ymd("2021-05-01")) %>%
   mutate(Week = epiweek(ChartDate),
          Week = ifelse(Week != 53 & year(ChartDate) != 2020, 53+Week, Week)) %>%
   group_by(Week) %>%
@@ -170,17 +113,21 @@ chd_age <- ll %>%
 chd_age$type <- factor(chd_age$type, levels = c("case", "hosp", "died"))
 
 p2 <- chd_age %>%
+  filter(type != "hosp") %>%
   ggplot() +
   geom_line(aes(x=week_end_date, y=med_age, colour=type), size=0.8, show.legend = F) +
   # scale_y_continuous(breaks = 0:4 * 4) +
-  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-  labs(x = "", y = "Median Age", title = "(b) Median age") +
-  scale_colour_manual(name = NA, values = c("black", "blue", "red"),
-                      labels = c("Case", "Hospitalized", "Death")) +
-  ggpubr::theme_pubclean(base_size = 9) +
+  scale_x_date(breaks = dates, labels = dates_label) +
+  labs(x = "", y = "", title = "(b) Median age") +
+  scale_colour_manual(name = NA, values = c("black", "red"),
+                      labels = c("Case", "Death")) +
+  ggpubr::theme_pubclean(base_size = 11) +
   theme(legend.title = element_blank(),
-        panel.grid.major.x = element_line(linetype = "dotted", color = "grey"),
-        plot.title = element_text(size = rel(1.0)))
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        # panel.grid.major.x = element_line(linetype = "dotted", color = "grey"),
+        plot.title = element_text(size = rel(0.95)))
 
 #### Plot by metrics
 pal <- viridis::inferno(4, end = 0.80)
@@ -200,14 +147,14 @@ p3l <- chd_all %>%
   geom_ribbon(aes(x=week_end_date, ymin=lo, ymax=hi, fill=age_grp), alpha=0.4) +
   geom_hline(yintercept = 1, lty = 2) +
   scale_y_continuous(breaks = 0:8 * 4) +
-  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  scale_x_date(breaks = dates, labels = dates_label) +
   labs(x = "", y = "", title = "(c) Case ratios by age group") +
   scale_colour_manual(values = pal[2:4]) +
   scale_fill_manual(values = pal[2:4]) +
-  ggpubr::theme_pubclean(base_size = 9) +
+  ggpubr::theme_pubclean(base_size = 11) +
   theme(legend.title = element_blank(),
         panel.grid.major.x = element_line(linetype = "dotted", color = "grey"),
-        plot.title = element_text(size = rel(1.0)))
+        plot.title = element_text(size = rel(0.95)))
 
 l2 <- ggpubr::get_legend(p3l)
 
@@ -219,14 +166,17 @@ p3 <- chd_all %>%
   geom_ribbon(aes(x=week_end_date, ymin=lo, ymax=hi, fill=age_grp), alpha=0.4, show.legend = F) +
   geom_hline(yintercept = 1, lty = 2) +
   scale_y_continuous(breaks = 0:8 * 4) +
-  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-  labs(x = "", y = "", title = "(c) Case ratios by age group") +
+  scale_x_date(breaks = dates, labels = dates_label) +
+  labs(x = "", y = "", title = "(c) Normalized cases by age group") +
   scale_colour_manual(values = pal[2:4]) +
   scale_fill_manual(values = pal[2:4]) +
-  ggpubr::theme_pubclean(base_size = 9) +
+  ggpubr::theme_pubclean(base_size = 11) +
   theme(legend.title = element_blank(),
-        panel.grid.major.x = element_line(linetype = "dotted", color = "grey"),
-        plot.title = element_text(size = rel(1.0)))
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        # panel.grid.major.x = element_line(linetype = "dotted", color = "grey"),
+        plot.title = element_text(size = rel(0.95)))
 
 p4 <- chd_all %>%
   filter(type == "dr") %>%
@@ -236,16 +186,19 @@ p4 <- chd_all %>%
   geom_ribbon(aes(x=week_end_date, ymin=lo, ymax=hi, fill=age_grp), alpha=0.4, show.legend = F) +
   geom_hline(yintercept = 1, lty = 2) +
   scale_y_continuous(breaks = 0:8 * 4) +
-  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-  labs(x = "", y = "", title = "(d) Death ratios by age group") +
+  scale_x_date(breaks = dates, labels = dates_label) +
+  labs(x = "", y = "", title = "(d) Normalized deaths by age group") +
   scale_colour_manual(values = pal[2:4]) +
   scale_fill_manual(values = pal[2:4]) +
-  ggpubr::theme_pubclean(base_size = 9) +
+  ggpubr::theme_pubclean(base_size = 11) +
   theme(legend.title = element_blank(),
-        panel.grid.major.x = element_line(linetype = "dotted", color = "grey"),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        # panel.grid.major.x = element_line(linetype = "dotted", color = "grey"),
         plot.title = element_text(size = rel(1.0)))
 
-b <- grid::rectGrob(gp = grid::gpar(col=NA))
+# b <- grid::rectGrob(gp = grid::gpar(col=NA))
 
 g <- grid.arrange(
   p1, p2, p3, p4, l1, l2,

@@ -96,44 +96,6 @@ chd_all_hhs <- chd_all %>%
   left_join(hhs_age_adj %>% select(Week, age_grp, hhs_hosp),
             by = c("Week", "age_grp"))
 
-p3 <- ggplot(chd_all_hhs %>% filter(Week >= 44)) +
-  geom_point(aes(x=n, y=death_n/hhs_hosp, colour=week_end_date)) +
-  # geom_path(aes(x=n, y=death_n/hhs_hosp, group=age_grp)) +
-  geom_smooth(aes(x=n, y=death_n/hhs_hosp, group=age_grp), method="lm", 
-              se=F, lty=2, colour="#444444") +
-  geom_label_repel(aes(x=n, y=death_n/hhs_hosp, label=age_grp), 
-                   data=chd_all_hhs %>% filter(Week >= 44) %>% 
-                     group_by(age_grp) %>% filter(n == max(n)),
-                   nudge_x = 1000) +
-  scale_x_continuous(expand=expansion(add=c(1000, 5000))) +
-  scale_y_log10() +
-  scale_colour_viridis_c(name="",
-                         breaks = ymd("2020-11-01", "2020-12-01", "2021-01-01",
-                                      "2021-02-01", "2021-03-01", "2021-04-01"),
-                         labels = month.abb[c(11:12, 1:4)]) +
-  labs(title = "High caseload = More death per hospitalized",
-       x = "Cases", y = "Death to hospitalized ratio") +
-  theme_bw()
-
-p2 <- ggplot(chd_all_hhs %>% filter(Week >= 44)) +
-  geom_point(aes(x=n, y=hhs_hosp/n, colour=week_end_date)) +
-  # geom_path(aes(x=n, y=death_n/hhs_hosp, group=age_grp)) +
-  geom_smooth(aes(x=n, y=hhs_hosp/n, group=age_grp), method="lm", 
-              se=F, lty=2, colour="#444444") +
-  geom_label_repel(aes(x=n, y=hhs_hosp/n, label=age_grp), 
-                   data=chd_all_hhs %>% filter(Week >= 44) %>% 
-                     group_by(age_grp) %>% filter(n == max(n)),
-                   nudge_x = 1000) +
-  scale_x_continuous(expand=expansion(add=c(1000, 5000))) +
-  scale_y_log10() +
-  scale_colour_viridis_c(name="",
-                         breaks = ymd("2020-11-01", "2020-12-01", "2021-01-01",
-                                      "2021-02-01", "2021-03-01", "2021-04-01"),
-                         labels = month.abb[c(11:12, 1:4)]) +
-  labs(title = "High caseload = Less hospitalized per case",
-       x = "Cases", y = "Hospitalized to case ratio") +
-  theme_bw()
-
 p1 <- ggplot(chd_all_hhs %>% filter(Week >= 44)) +
   geom_point(aes(x=n, y=death_n/n, colour=week_end_date)) +
   # geom_path(aes(x=n, y=death_n/hhs_hosp, group=age_grp)) +
@@ -148,10 +110,112 @@ p1 <- ggplot(chd_all_hhs %>% filter(Week >= 44)) +
   scale_colour_viridis_c(name="",
                          breaks = ymd("2020-11-01", "2020-12-01", "2021-01-01",
                                       "2021-02-01", "2021-03-01", "2021-04-01"),
-                         labels = month.abb[c(11:12, 1:4)]) +
-  labs(title = "Case fatality ratio unchanged with caseload",
-       x = "Cases", y = "Case fatality ratio") +
-  theme_bw()
+                         labels = c("Nov '20", "Dec", "Jan '21",
+                                    month.abb[2:4])) +
+  labs(title = "(a) Case fatality ratio",
+       x = "Cases", y = "") +
+  ggpubr::theme_pubclean(base_size = 11) +
+  theme(legend.title = element_blank(),
+        legend.position = "right",
+        legend.background = element_rect(fill = NA),
+        legend.direction = "vertical",
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        # panel.grid.major.x = element_line(linetype = "dotted", color = "grey"),
+        plot.title = element_text(size = rel(0.95)))
 
-g <- grid.arrange(p1, p2, p3, nrow = 3)
+l <- ggpubr::get_legend(p1)
+
+p1 <- ggplot(chd_all_hhs %>% filter(Week >= 44)) +
+  geom_point(aes(x=n, y=death_n/n, colour=week_end_date),
+             show.legend = F) +
+  # geom_path(aes(x=n, y=death_n/hhs_hosp, group=age_grp)) +
+  geom_smooth(aes(x=n, y=death_n/n, group=age_grp), method="lm", 
+              se=F, lty=2, colour="#444444") +
+  geom_label_repel(aes(x=n, y=death_n/n, label=age_grp), 
+                   data=chd_all_hhs %>% filter(Week >= 44) %>% 
+                     group_by(age_grp) %>% filter(n == max(n)),
+                   nudge_x = 1000) +
+  scale_x_continuous(expand=expansion(add=c(1000, 5000))) +
+  scale_y_log10() +
+  scale_colour_viridis_c(name="",
+                         breaks = ymd("2020-11-01", "2020-12-01", "2021-01-01",
+                                      "2021-02-01", "2021-03-01", "2021-04-01"),
+                         labels = c("Nov '20", "Dec", "Jan '21",
+                                    month.abb[2:4])) +
+  labs(title = "(a) Case fatality ratio",
+       x = "Cases", y = "") +
+  ggpubr::theme_pubclean(base_size = 11) +
+  theme(legend.title = element_blank(),
+        legend.position = "right",
+        legend.background = element_rect(fill = NA),
+        legend.direction = "vertical",
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        # panel.grid.major.x = element_line(linetype = "dotted", color = "grey"),
+        plot.title = element_text(size = rel(0.95)))
+
+
+p2 <- ggplot(chd_all_hhs %>% filter(Week >= 44)) +
+  geom_point(aes(x=n, y=hhs_hosp/n, colour=week_end_date),
+             show.legend = F) +
+  geom_smooth(aes(x=n, y=hhs_hosp/n, group=age_grp), method="lm", 
+              se=F, lty=2, colour="#444444") +
+  geom_label_repel(aes(x=n, y=hhs_hosp/n, label=age_grp), 
+                   data=chd_all_hhs %>% filter(Week >= 44) %>% 
+                     group_by(age_grp) %>% filter(n == max(n)),
+                   nudge_x = 1000) +
+  scale_x_continuous(expand=expansion(add=c(1000, 5000))) +
+  scale_y_log10() +
+  scale_colour_viridis_c(name="",
+                         breaks = ymd("2020-11-01", "2020-12-01", "2021-01-01",
+                                      "2021-02-01", "2021-03-01", "2021-04-01"),
+                         labels = c("Nov '20", "Dec", "Jan '21",
+                                    month.abb[2:4])) +
+  labs(title = "(b) Hospitalized to case ratio",
+       x = "Cases", y = "") +
+  ggpubr::theme_pubclean(base_size = 11) +
+  theme(legend.title = element_blank(),
+        legend.position = "right",
+        legend.background = element_rect(fill = NA),
+        legend.direction = "vertical",
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        # panel.grid.major.x = element_line(linetype = "dotted", color = "grey"),
+        plot.title = element_text(size = rel(0.95)))
+
+p3 <- ggplot(chd_all_hhs %>% filter(Week >= 44)) +
+  geom_point(aes(x=n, y=death_n/hhs_hosp, colour=week_end_date),
+             show.legend = F) +
+  # geom_path(aes(x=n, y=death_n/hhs_hosp, group=age_grp)) +
+  geom_smooth(aes(x=n, y=death_n/hhs_hosp, group=age_grp), method="lm", 
+              se=F, lty=2, colour="#444444") +
+  geom_label_repel(aes(x=n, y=death_n/hhs_hosp, label=age_grp), 
+                   data=chd_all_hhs %>% filter(Week >= 44) %>% 
+                     group_by(age_grp) %>% filter(n == max(n)),
+                   nudge_x = 1000) +
+  scale_x_continuous(expand=expansion(add=c(1000, 5000))) +
+  scale_y_log10() +
+  scale_colour_viridis_c(name="",
+                         breaks = ymd("2020-11-01", "2020-12-01", "2021-01-01",
+                                      "2021-02-01", "2021-03-01", "2021-04-01"),
+                         labels = c("Nov '20", "Dec", "Jan '21",
+                                    month.abb[2:4])) +
+  labs(title = "(c) Death to hospitalized ratio",
+       x = "Cases", y = "") +
+  ggpubr::theme_pubclean(base_size = 11) +
+  theme(legend.title = element_blank(),
+        legend.position = "right",
+        legend.background = element_rect(fill = NA),
+        legend.direction = "vertical",
+        axis.title.y = element_blank(),
+        panel.border = element_rect(fill = NA, size = 1),
+        plot.title = element_text(size = rel(0.95)))
+
+
+g <- arrangeGrob(p1, p2, p3, l,
+                 layout_matrix = matrix(c(1, 2, 3, 4, 4, 4), 3, 2),
+                 widths = c(10, 1.5))
+ggpubr::as_ggplot(g)
 ggsave("fig/chd_pairs_2021.png", g, width = 16, height = 24, units = "cm")
+

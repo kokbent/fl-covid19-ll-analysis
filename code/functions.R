@@ -1,7 +1,5 @@
 read_ll <- function () {
   ll <- data.table::fread("data/linelist_latest.csv")
-  ll$Case1 <- as.POSIXct(ll$Case1/1000, origin="1970-01-01", tz="UTC") %>%
-    format(format = "%Y-%m-%d %H:%M:%S")
   ll$EventDate <- ymd_hms(ll$EventDate) %>% as.Date()
   ll$ChartDate <- ymd_hms(ll$ChartDate) %>% as.Date()
   ll$Age <- as.numeric(ll$Age)
@@ -34,7 +32,7 @@ make_chd_all <- function (ll) {
   
   for (i in 1:4) {
     chd <- ll %>%
-      filter(ChartDate >= ymd("2020-03-01"), ChartDate <= ymd("2021-04-03")) %>%
+      filter(ChartDate >= ymd("2020-03-01"), ChartDate <= ymd("2021-05-01")) %>%
       filter(Age >= age_lo[i], Age <= age_hi[i]) %>% 
       group_by(ChartDate) %>%
       summarise(n = n(), 
@@ -88,6 +86,9 @@ make_chd_all <- function (ll) {
     
     chd_all <- bind_rows(chd_all, chd_long)
   }
+  
+  chd_all$age_grp <- factor(chd_all$age_grp,
+                            levels = c("All ages", "0 to 39", "40 to 64", "Above 65"))
   
   return(chd_all)
 }
